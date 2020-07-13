@@ -1,0 +1,68 @@
+#!/usr/bin/env ruby
+#######################################################################################
+require 'html-renderer'
+#######################################################################################
+
+def lesspipe(*args)
+  if args.any? and args.last.is_a?(Hash)
+    options = args.pop
+  else
+    options = {}
+  end
+
+  output = args.first if args.any?
+
+  params = []
+  params << "-R" unless options[:color] == false
+  params << "-S" unless options[:wrap] == true
+  params << "-F" unless options[:always] == true
+  if options[:tail] == true
+    params << "+\\>"
+    $stderr.puts "Seeking to end of stream..."
+  end
+  params << "-X"
+
+  IO.popen("less #{params * ' '}", "w") do |less|
+    if output
+      less.puts output
+    else
+      yield less
+    end
+  end
+rescue Errno::EPIPE, Interrupt
+  # less just quit -- eat the exception.
+end
+
+#######################################################################################
+
+def render(stream, paged=false)
+  output = HTMLRenderer::ANSI.render(stream)
+
+  if paged
+    lesspipe { |less| less.puts output }
+  else
+    puts output
+  end
+end
+
+#######################################################################################
+
+opts, args = ARGV.partition { |arg| arg[/^--?\w/] }
+
+if opts.include?("-h") or opts.include?("--help")
+  puts "usage:"
+  puts "  html2ansi [options] <file.html>"
+  puts "    or"
+  puts "  curl http://host/path.html | html2ansi [options]"
+  puts
+  puts "options:"
+  puts "    -p    Paged (redirect output to less)"
+  puts
+else
+  paged = opts.include?("-p") or opts.include?("--paged")
+  if args.empty?
+    render($stdin, paged)
+  else
+    args.each { |arg| render(open(arg), paged) }
+  end
+end
